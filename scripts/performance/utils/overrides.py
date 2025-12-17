@@ -68,6 +68,7 @@ def _set_megatron_fsdp_overrides(recipe: ConfigContainer, use_megatron_fsdp: boo
     if not use_megatron_fsdp:
         return
 
+    print(f"[debug mbridge] setting megatron fsdp overrides")
     recipe.ddp.use_megatron_fsdp = True
     recipe.ddp.data_parallel_sharding_strategy = "optim_grads_params"
     recipe.ddp.keep_fp8_transpose_cache = False
