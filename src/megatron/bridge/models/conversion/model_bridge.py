@@ -805,6 +805,8 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                         f"  Bridge type: {type(task.mapping).__name__}\n"
                         f"  HF mapping: {task.mapping.hf_param}"
                     )
+                print(f"Loading weight for Megatron param {task.mapping.megatron_param} from HF param {task.mapping.hf_param}")
+                print(f"type(task.param_weight.data)= {type(task.param_weight.data)} type(converted_weights)={type(converted_weights)}")
                 task.param_weight.data.copy_(converted_weights)
 
         self._broadcast_shared_embeddings(megatron_model)
