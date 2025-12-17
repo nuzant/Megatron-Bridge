@@ -820,6 +820,8 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                         placements=param_data.placements,
                     )
                     task.param_weight.data = new_dtensor
+                    print(f"[debug mbridge] loaded dtensor for {task.param_name} converted_weights.requires_grad={converted_weights.requires_grad} "
+                          f"new_dtensor.requires_grad={new_dtensor.requires_grad} converted_weights.main_grad={converted_weights.main_grad} new_dtensor.main_grad={new_dtensor.main_grad}")
                 else:
                     param_data.copy_(converted_weights)
 
