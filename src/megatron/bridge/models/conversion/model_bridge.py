@@ -780,8 +780,13 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 # Assert that param_weight is not None for HF->Megatron tasks
                 assert task.param_weight is not None, "param_weight is required for HF->Megatron conversion"
 
+                # For FSDP with DTensor, we need to access the local tensor for shape comparison and copy
+                param_data = task.param_weight.data
+                is_dtensor = hasattr(param_data, "_local_tensor")
+                target_tensor = param_data._local_tensor if is_dtensor else param_data
+
                 # Check shape compatibility before copying
-                if converted_weights.shape != task.param_weight.shape:
+                if converted_weights.shape != target_tensor.shape:
                     # Check whitelist
                     is_whitelisted = False
                     if allowed_mismatched_params:
@@ -800,14 +805,14 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
 
                     raise ValueError(
                         f"Shape mismatch for megatron param {task.mapping.megatron_param}:\n"
-                        f"  Expected shape: {task.param_weight.shape}\n"
+                        f"  Expected shape: {target_tensor.shape}\n"
                         f"  Got shape: {converted_weights.shape}\n"
                         f"  Bridge type: {type(task.mapping).__name__}\n"
                         f"  HF mapping: {task.mapping.hf_param}"
                     )
                 print(f"Loading weight for Megatron param {task.mapping.megatron_param} from HF param {task.mapping.hf_param}")
                 print(f"type(task.param_weight.data)= {type(task.param_weight.data)} type(converted_weights)={type(converted_weights)}")
-                task.param_weight.data.copy_(converted_weights)
+                target_tensor.copy_(converted_weights)
 
         self._broadcast_shared_embeddings(megatron_model)
         return megatron_model
@@ -1295,13 +1300,21 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
             if embd_group is not None and torch.distributed.get_rank() in embd_group_ranks:
                 # Get embeddings and output weights from rank 0
                 if hasattr(unwrapped_model, "embedding") and hasattr(unwrapped_model.embedding, "word_embeddings"):
-                    embd_weights = unwrapped_model.embedding.word_embeddings.weight.data
+                    embd_data = unwrapped_model.embedding.word_embeddings.weight.data
+                    # Handle DTensor for FSDP
+                    embd_weights = embd_data._local_tensor if hasattr(embd_data, "_local_tensor") else embd_data
                 else:
                     assert hasattr(unwrapped_model, "output_layer"), "Output layer not found"
-                    embd_weights = torch.empty_like(unwrapped_model.output_layer.weight.data)
+                    output_data = unwrapped_model.output_layer.weight.data
+                    # Handle DTensor for FSDP
+                    output_local = output_data._local_tensor if hasattr(output_data, "_local_tensor") else output_data
+                    embd_weights = torch.empty_like(output_local)
                 torch.distributed.broadcast(embd_weights, src=embd_group_ranks[0], group=embd_group)
                 if hasattr(unwrapped_model, "output_layer"):
-                    unwrapped_model.output_layer.weight.data.copy_(embd_weights)
+                    output_data = unwrapped_model.output_layer.weight.data
+                    # Handle DTensor for FSDP
+                    target_tensor = output_data._local_tensor if hasattr(output_data, "_local_tensor") else output_data
+                    target_tensor.copy_(embd_weights)
 
     def _get_lora_unwrapped_name(self, megatron_param: str) -> str:
         """Remove .to_wrap from LoRA parameter names."""
