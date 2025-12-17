@@ -780,15 +780,12 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 # Assert that param_weight is not None for HF->Megatron tasks
                 assert task.param_weight is not None, "param_weight is required for HF->Megatron conversion"
 
-                # For FSDP with DTensor, we need to access the local tensor for shape comparison and copy
+                # For FSDP with DTensor, we need special handling
                 param_data = task.param_weight.data
                 is_dtensor = hasattr(param_data, "_local_tensor")
-                if is_dtensor and torch.distributed.get_rank() == 0:
-                    print(f"task.mapping.megatron_param={task.mapping.megatron_param} DTensor device_mesh={param_data.device_mesh} placement={param_data.placements} dtensor shape={param_data.shape}")
-                target_tensor = param_data._local_tensor if is_dtensor else param_data
 
-                # Check shape compatibility before copying
-                if converted_weights.shape != target_tensor.shape:
+                # Check shape compatibility before copying (use DTensor's logical shape)
+                if converted_weights.shape != param_data.shape:
                     # Check whitelist
                     is_whitelisted = False
                     if allowed_mismatched_params:
@@ -807,14 +804,24 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
 
                     raise ValueError(
                         f"Shape mismatch for megatron param {task.mapping.megatron_param}:\n"
-                        f"  Expected shape: {target_tensor.shape}\n"
+                        f"  Expected shape: {param_data.shape}\n"
                         f"  Got shape: {converted_weights.shape}\n"
                         f"  Bridge type: {type(task.mapping).__name__}\n"
                         f"  HF mapping: {task.mapping.hf_param}"
                     )
-                print(f"Loading weight for Megatron param {task.mapping.megatron_param} from HF param {task.mapping.hf_param}")
-                print(f"type(task.param_weight.data)= {type(task.param_weight.data)} type(converted_weights)={type(converted_weights)}")
-                target_tensor.copy_(converted_weights)
+
+                if is_dtensor:
+                    # For DTensor, create a new DTensor from the local converted_weights
+                    # using the same device mesh and placements as the target parameter
+                    from torch.distributed.tensor import DTensor
+                    new_dtensor = DTensor.from_local(
+                        converted_weights,
+                        device_mesh=param_data.device_mesh,
+                        placements=param_data.placements,
+                    )
+                    task.param_weight.data = new_dtensor
+                else:
+                    param_data.copy_(converted_weights)
 
         self._broadcast_shared_embeddings(megatron_model)
         return megatron_model
@@ -1314,9 +1321,18 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 torch.distributed.broadcast(embd_weights, src=embd_group_ranks[0], group=embd_group)
                 if hasattr(unwrapped_model, "output_layer"):
                     output_data = unwrapped_model.output_layer.weight.data
-                    # Handle DTensor for FSDP
-                    target_tensor = output_data._local_tensor if hasattr(output_data, "_local_tensor") else output_data
-                    target_tensor.copy_(embd_weights)
+                    is_dtensor = hasattr(output_data, "_local_tensor")
+                    if is_dtensor:
+                        # For DTensor, create a new DTensor from the broadcast weights
+                        from torch.distributed.tensor import DTensor
+                        new_dtensor = DTensor.from_local(
+                            embd_weights,
+                            device_mesh=output_data.device_mesh,
+                            placements=output_data.placements,
+                        )
+                        unwrapped_model.output_layer.weight.data = new_dtensor
+                    else:
+                        output_data.copy_(embd_weights)
 
     def _get_lora_unwrapped_name(self, megatron_param: str) -> str:
         """Remove .to_wrap from LoRA parameter names."""
