@@ -817,7 +817,7 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                     weight_dtensor = DTensor.from_local(
                         converted_weights,
                         device_mesh=param_data.device_mesh,
-                        placements=Replicate(),
+                        placements=[Replicate() for _ in param_data.placements],
                     )
                     sharded_dtensor = weight_dtensor.redistribute(
                         device_mesh=param_data.device_mesh,
