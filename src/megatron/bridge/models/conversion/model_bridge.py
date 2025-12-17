@@ -1391,8 +1391,8 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                     print(f"[debug mbridge rank 0] type(megatron_model[0])={type(megatron_model[0])} current local_name={local_name}", flush=True)
             
                 # temp fix for MegatronFSDP
-                from megatron.core.distributed.fsdp.src.megatron_fsdp import MegatronFSDP
-                if isinstance(megatron_model[0], MegatronFSDP):
+                from megatron.core.distributed.fsdp.mcore_fsdp_adapter import FullyShardedDataParallel
+                if isinstance(megatron_model[0], FullyShardedDataParallel):
                     local_module, local_weights = get_module_and_param_from_name(megatron_model, orig_local_name, vp_stage)
                 else:
                     local_module, local_weights = get_module_and_param_from_name(megatron_model, local_name, vp_stage)
