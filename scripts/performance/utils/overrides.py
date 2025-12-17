@@ -75,7 +75,7 @@ def _set_megatron_fsdp_overrides(recipe: ConfigContainer, use_megatron_fsdp: boo
     recipe.ddp.average_in_collective = False
 
     recipe.model.init_model_with_meta_device = True
-    recipe.model.gradient_accumulation_fusion = True
+    recipe.model.gradient_accumulation_fusion = False
 
     if recipe.comm_overlap is not None and isinstance(recipe.comm_overlap, CommOverlapConfig):
         if recipe.comm_overlap.defer_embedding_wgrad_compute:
