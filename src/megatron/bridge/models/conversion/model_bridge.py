@@ -813,16 +813,25 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 if is_dtensor:
                     # For DTensor, create a new DTensor from the local converted_weights
                     # using the same device mesh and placements as the target parameter
-                    from torch.distributed.tensor import DTensor
-                    new_dtensor = DTensor.from_local(
+                    from torch.distributed.tensor import DTensor, Replicate
+                    weight_dtensor = DTensor.from_local(
                         converted_weights,
+                        device_mesh=param_data.device_mesh,
+                        placements=Replicate(),
+                    )
+                    sharded_dtensor = weight_dtensor.redistribute(
                         device_mesh=param_data.device_mesh,
                         placements=param_data.placements,
                     )
-                    new_dtensor.requires_grad = param_data.requires_grad
-                    task.param_weight.data = new_dtensor
+                    # new_dtensor = DTensor.from_local(
+                    #     converted_weights,
+                    #     device_mesh=param_data.device_mesh,
+                    #     placements=param_data.placements,
+                    # )
+                    # new_dtensor.requires_grad = param_data.requires_grad
+                    task.param_weight.data = sharded_dtensor
                     if torch.distributed.get_rank() == 0:
-                        print(f"[debug mbridge] loaded dtensor for {task.param_name}: device_mesh={new_dtensor.device_mesh}, placements={new_dtensor.placements}, requires_grad={new_dtensor.requires_grad}")
+                        print(f"[debug mbridge] loaded dtensor for {task.param_name}: device_mesh={sharded_dtensor.device_mesh}, placements={sharded_dtensor.placements}, requires_grad={sharded_dtensor.requires_grad}")
                 else:
                     param_data.copy_(converted_weights)
 
@@ -1333,7 +1342,6 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                             device_mesh=output_data.device_mesh,
                             placements=output_data.placements,
                         )
-                        new_dtensor.requires_grad = True
                         unwrapped_model.output_layer.weight.data = new_dtensor
                     else:
                         output_data.copy_(embd_weights)
