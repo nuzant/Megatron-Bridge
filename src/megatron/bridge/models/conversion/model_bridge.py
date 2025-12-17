@@ -1352,7 +1352,11 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 if "_extra_state" in local_name or self._is_adapter_param_name(local_name):
                     continue
 
+                if torch.distributed.get_rank() == 0:
+                    print(f"[debug mbridge rank 0] before unwrap local_name={local_name}", flush=True)
                 local_name = self._unwrap_name(local_name)
+                if torch.distributed.get_rank() == 0:
+                    print(f"[debug mbridge rank 0] after unwrap local_name={local_name}", flush=True)
                 global_name = _megatron_local_name_to_global(megatron_model, model_config, local_name, vp_stage)
                 # if name removed due to some reason, continue. e.g. embeddings_are_tied
                 if global_name not in global_names_index_dict:
@@ -1381,6 +1385,8 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                             )
                             continue
 
+                if torch.distributed.get_rank() == 0:
+                    print(f"[debug mbridge rank 0] type(megatron_model[0])={type(megatron_model[0])} current local_name={local_name}", flush=True)
                 local_module, local_weights = get_module_and_param_from_name(megatron_model, local_name, vp_stage)
                 if local_module is not None and not hasattr(local_module, "config"):
                     # If module is not a MegatronModule (e.g. torch.nn.Conv1d or a module list) we need
