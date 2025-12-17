@@ -1310,6 +1310,7 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
 
         return ".adapter." in param_name
 
+    # This conversion only works if megatron_model is a list of DistributedDataParallel instances
     def build_conversion_tasks(
         self,
         hf_pretrained: HFPreTrained,
@@ -1354,6 +1355,7 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
 
                 if torch.distributed.get_rank() == 0:
                     print(f"[debug mbridge rank 0] before unwrap local_name={local_name}", flush=True)
+                orig_local_name = local_name
                 local_name = self._unwrap_name(local_name)
                 if torch.distributed.get_rank() == 0:
                     print(f"[debug mbridge rank 0] after unwrap local_name={local_name}", flush=True)
@@ -1387,7 +1389,13 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
 
                 if torch.distributed.get_rank() == 0:
                     print(f"[debug mbridge rank 0] type(megatron_model[0])={type(megatron_model[0])} current local_name={local_name}", flush=True)
-                local_module, local_weights = get_module_and_param_from_name(megatron_model, local_name, vp_stage)
+            
+                # temp fix for MegatronFSDP
+                from megatron.core.distributed.fsdp.src.megatron_fsdp import MegatronFSDP
+                if isinstance(megatron_model[0], MegatronFSDP):
+                    local_module, local_weights = get_module_and_param_from_name(megatron_model, orig_local_name, vp_stage)
+                else:
+                    local_module, local_weights = get_module_and_param_from_name(megatron_model, local_name, vp_stage)
                 if local_module is not None and not hasattr(local_module, "config"):
                     # If module is not a MegatronModule (e.g. torch.nn.Conv1d or a module list) we need
                     # to get the config from the model
