@@ -784,7 +784,7 @@ class MegatronModelBridge(Generic[HFPreTrained, ModelProviderTarget, MegatronMod
                 param_data = task.param_weight.data
                 is_dtensor = hasattr(param_data, "_local_tensor")
                 if is_dtensor and torch.distributed.get_rank() == 0:
-                    print(f"task.mapping.megatron_param={task.mapping.megatron_param} DTensor device_mesh={param_data.device_mesh} placement={param_data.placement} dtensor shape={param_data.shape}")
+                    print(f"task.mapping.megatron_param={task.mapping.megatron_param} DTensor device_mesh={param_data.device_mesh} placement={param_data.placements} dtensor shape={param_data.shape}")
                 target_tensor = param_data._local_tensor if is_dtensor else param_data
 
                 # Check shape compatibility before copying
